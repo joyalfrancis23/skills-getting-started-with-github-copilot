@@ -4,6 +4,28 @@ document.addEventListener("DOMContentLoaded", () => {
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
 
+  // Function to remove a participant from an activity
+  async function removeParticipant(activityName, email) {
+    try {
+      const response = await fetch(
+        `/activities/${encodeURIComponent(activityName)}/participant?email=${encodeURIComponent(email)}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      if (response.ok) {
+        // Refresh activities to update the list
+        await fetchActivities();
+      } else {
+        const result = await response.json();
+        console.error("Error removing participant:", result.detail);
+      }
+    } catch (error) {
+      console.error("Error removing participant:", error);
+    }
+  }
+
   // Function to fetch activities from API
   async function fetchActivities() {
     try {
@@ -13,6 +35,11 @@ document.addEventListener("DOMContentLoaded", () => {
       // Clear loading message
       activitiesList.innerHTML = "";
 
+      // Clear existing dropdown options (except the first placeholder)
+      while (activitySelect.options.length > 1) {
+        activitySelect.remove(1);
+      }
+
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
         const activityCard = document.createElement("div");
@@ -20,14 +47,34 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const spotsLeft = details.max_participants - details.participants.length;
 
+        // Build participants list HTML
+        const participantsList = details.participants.length > 0
+          ? `<ul class="participants-list">${details.participants.map(p => `<li>${p}<button class="delete-btn" data-activity="${name}" data-email="${p}">✕</button></li>`).join('')}</ul>`
+          : '<p class="no-participants"><em>No participants yet</em></p>';
+
         activityCard.innerHTML = `
           <h4>${name}</h4>
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
           <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
+          <div class="participants-section">
+            <h5>Current Participants:</h5>
+            ${participantsList}
+          </div>
         `;
 
         activitiesList.appendChild(activityCard);
+
+        // Attach delete event listeners to delete buttons
+        const deleteButtons = activityCard.querySelectorAll(".delete-btn");
+        deleteButtons.forEach(btn => {
+          btn.addEventListener("click", async (e) => {
+            e.preventDefault();
+            const activity = btn.getAttribute("data-activity");
+            const email = btn.getAttribute("data-email");
+            await removeParticipant(activity, email);
+          });
+        });
 
         // Add option to select dropdown
         const option = document.createElement("option");
@@ -62,6 +109,9 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+
+        // Refresh UI to show updated participants / availability
+        await fetchActivities();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
